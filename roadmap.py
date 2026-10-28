@@ -1,95 +1,73 @@
 
-import os
 import streamlit as st
-
-st.set_page_config(
-    page_title="AI Learning Roadmap Generator",
-    page_icon="🎯",
-    layout="centered"
+from groq import (
+    Groq,
+    AuthenticationError,
+    RateLimitError,
+    APIConnectionError,
+    APIStatusError
 )
 
-st.title("🎯 AI Learning Roadmap Generator")
-st.write("Create your personalized learning roadmap with AI.")
 
-# User inputs
-field = st.text_input(
-    "What do you want to learn?",
-    placeholder="e.g. Cybersecurity, Python, Artificial Intelligence"
-)
+def generate_roadmap(field, level, weeks, hours, api_key):
 
-level = st.selectbox(
-    "Select your skill level",
-    ["Beginner", "Intermediate", "Advanced"]
-)
+    client = Groq(api_key=api_key)
 
-weeks = st.number_input(
-    "Learning duration (weeks)",
-    min_value=1,
-    max_value=104,
-    value=8
-)
+    prompt = f"""
+    Create a personalized learning roadmap.
 
-hours = st.number_input(
-    "Available study hours per week",
-    min_value=1,
-    max_value=80,
-    value=5
-)
+    Field: {field}
+    Skill level: {level}
+    Duration: {weeks} weeks
+    Available study hours per week: {hours}
 
-# Generate roadmap
-if st.button("Generate My Roadmap", type="primary"):
+    Include:
+    1. Learning goals
+    2. Weekly topics in learning order
+    3. Practical exercises
+    4. A final project
+    5. Free learning resources
+    6. A progress checklist
 
-    if not field.strip():
-        st.warning("Please enter a learning field.")
+    Use simple language and a realistic schedule.
+    """
 
-    elif not os.environ.get("GROQ_API_KEY"):
-        st.error(
-            "Groq API key is missing. "
-            "Add GROQ_API_KEY in Streamlit Secrets."
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert learning roadmap planner."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.5,
+            max_tokens=3000
         )
 
-    else:
-        try:
-            from roadmap import generate_roadmap
+        return response.choices[0].message.content
 
-            with st.spinner("Generating your roadmap..."):
-                result = generate_roadmap(
-                    field.strip(),
-                    level,
-                    int(weeks),
-                    int(hours)
-                )
+    except AuthenticationError:
+        raise RuntimeError(
+            "Invalid API key. Check your GROQ_API_KEY in Streamlit Secrets."
+        )
 
-            if result:
-                st.success("Your roadmap is ready!")
-                st.markdown(result)
+    except RateLimitError:
+        raise RuntimeError(
+            "Groq API rate limit reached. Check your Groq Console limits."
+        )
 
-                st.download_button(
-                    label="Download Roadmap",
-                    data=result,
-                    file_name="learning_roadmap.md",
-                    mime="text/markdown"
-                )
-            else:
-                st.warning("The AI returned an empty roadmap.")
+    except APIConnectionError:
+        raise RuntimeError(
+            "Could not connect to Groq. Check your internet connection."
+        )
 
-        except ModuleNotFoundError as e:
-            if e.name == "roadmap":
-                st.error(
-                    "roadmap.py is missing. "
-                    "Upload roadmap.py to the same GitHub "
-                    "folder as app.py."
-                )
-            else:
-                st.error(
-                    f"Missing Python package: {e.name}. "
-                    "Check requirements.txt."
-                )
-
-        except Exception as e:
-            st.error(
-                "Could not generate the roadmap. "
-                "Check your API key, model availability, "
-                "and Streamlit logs."
-            )
-            st.caption(f"Error type: {type(e).__name__}")
+    except APIStatusError as e:
+        raise RuntimeError(
+            f"Groq API returned HTTP {e.status_code}. "
+            "Check the model and API access in Groq Console."
+        )
